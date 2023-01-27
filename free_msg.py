@@ -1,8 +1,6 @@
-from telethon.sync import TelegramClient, events, utils
+from telethon.sync import TelegramClient, events
 import re
-from telethon.tl.functions.account import UpdateStatusRequest
-from telethon.tl.functions.messages import ForwardMessagesRequest
-from telethon.tl.functions.messages import SendMessageRequest
+
 from telethon.tl.types import *
 import math
 import init
@@ -32,19 +30,7 @@ bybit_session = usdt_perpetual.HTTP(
     api_key="CkSkPAoGdHeo6GscAE",
     api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
 )
-class order_response:
-    strategy1_order_response ={
-    };
-    
-    
-    strategy2_order_response ={
-    };
-    strategy_nevin_order_response ={
-    };
-    strategy_free_order_response ={
-    };
-    testing_response={
-    };
+
 
 def matching_side(message):
     strategy_1_long_open = re.search("做多開倉", message)
@@ -55,24 +41,24 @@ def matching_side(message):
 
 #"《做多開倉》"
     if(strategy_1_long_open !=None and strategy_1_long_close == None and strategy_1_short_open == None and strategy_1_short_close == None):
-        side ='BUY'
+        side ='Buy'
 
         return(side)
 #"《做多平倉》"
     if(strategy_1_long_close != None and strategy_1_short_close == None and strategy_1_long_open == None and strategy_1_short_open == None):
-        side= 'SELL'
+        side= 'Sell'
         
         
         return (side);
 #"《做空開倉》"
     if(strategy_1_short_open != None and strategy_1_long_open == None and strategy_1_long_close == None and strategy_1_short_close == None ):
-        side = 'SELL'
+        side = 'Sell'
         
         
         return (side);
 #"《做空平倉》"
     if(strategy_1_short_close !=None and strategy_1_long_open == None and strategy_1_long_close == None and strategy_1_short_open == None):
-        side = 'BUY'
+        side = 'Buy'
         
         
         return (side);
@@ -83,30 +69,30 @@ def matching_positionSide(message):
     strategy_1_short_open = re.search("做空開倉", message)
     strategy_1_short_close = re.search("做空全部平倉", message)
     positionSide=""
-    side=""
+    
 
 #"《做多開倉》"
     if(strategy_1_long_open !=None and strategy_1_long_close == None and strategy_1_short_open == None and strategy_1_short_close == None):
-        side ='BUY'
-        positionSide='Long'
+        
+        positionSide=1
         
         return(positionSide)
 #"《做多平倉》"
     if(strategy_1_long_close != None and strategy_1_short_close == None and strategy_1_long_open == None and strategy_1_short_open == None):
-        side= 'SELL'
-        positionSide= 'Long'
+        
+        positionSide=1
         
         return (positionSide);
 #"《做空開倉》"
     if(strategy_1_short_open != None and strategy_1_long_open == None and strategy_1_long_close == None and strategy_1_short_close == None ):
-        side = 'SELL'
-        positionSide ='Short'
+        
+        positionSide =2
         
         return (positionSide);
 #"《做空平倉》"
     if(strategy_1_short_close !=None and strategy_1_long_open == None and strategy_1_long_close == None and strategy_1_short_open == None):
-        side = 'BUY'
-        positionSide ='Short'
+        
+        positionSide =2
         
         return (positionSide);
 
@@ -121,51 +107,51 @@ def matching_coin(message):  # defining it is BTC or ETH
     else:
         return ("ETHUSDT")
 
-def getTheQuantity(ratio,price): #ration is the percentage of the balance
-    #balance=getTheUSDTAmount()
-    balance=5000
+async def getTheQuantity(ratio,price): #ration is the percentage of the balance
+    balance=await bybit_getTheUSDTAmount()
+    #balance=5000
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-def binance_getTheUSDTAmount():
-    acc =   binance_client.futures_account_balance();
-    USDT_balance=acc[3]['balance']#hard code to get the USDT balance
-    return USDT_balance
+# def binance_getTheUSDTAmount():
+#     acc =   binance_client.futures_account_balance();
+#     USDT_balance=acc[3]['balance']#hard code to get the USDT balance
+#     return USDT_balance
 
-def bybit_getTheUSDTAmount():
-    acc =   bybit_session.get_wallet_balance(coin="USDT")
+async def bybit_getTheUSDTAmount():
+    acc =  bybit_session.get_wallet_balance(coin="USDT")
     USDT_balance=acc["result"]["USDT"]["available_balance"]#hard code to get the USDT balance
     return USDT_balance
 
-def Binance_createNewOrder(symbol,side,positionSide,price,quantity):
-    #BUY LONG == 做多開倉
-    #SELL SHORT ＝＝做空開倉
+# def Binance_createNewOrder(symbol,side,positionSide,price,quantity):
+#     #BUY LONG == 做多開倉
+#     #SELL SHORT ＝＝做空開倉
 
-    # new_order=binance_client.futures_create_order(
-    #     symbol= 'BTCUSDT', #Type of coin e.g.:"BTCUSDT"
-    #     side=SIDE_SELL ,   #BUY OR Sell
-    #     positionSide= "short", #Long or Short  
-    #     type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
-    #     quantity=1, # the order amount
-    #     price=18000, # order price ,
-    #     timeInForce = TIME_IN_FORCE_GTC,)
+#     # new_order=binance_client.futures_create_order(
+#     #     symbol= 'BTCUSDT', #Type of coin e.g.:"BTCUSDT"
+#     #     side=SIDE_SELL ,   #BUY OR Sell
+#     #     positionSide= "short", #Long or Short  
+#     #     type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
+#     #     quantity=1, # the order amount
+#     #     price=18000, # order price ,
+#     #     timeInForce = TIME_IN_FORCE_GTC,)
 
-    new_order=binance_client.futures_create_order(
-        symbol= symbol, #Type of coin e.g.:"BTCUSDT"
-        side=side ,   #BUY OR Sell
-        positionSide= positionSide, #Long or Short  
-        type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
-        quantity=quantity, # the order amount
-        price=price, # order price ,
-        timeInForce = TIME_IN_FORCE_GTC,)
+#     new_order=binance_client.futures_create_order(
+#         symbol= symbol, #Type of coin e.g.:"BTCUSDT"
+#         side=side ,   #BUY OR Sell
+#         positionSide= positionSide, #Long or Short  
+#         type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
+#         quantity=quantity, # the order amount
+#         price=price, # order price ,
+#         timeInForce = TIME_IN_FORCE_GTC,)
         
-    order_response.testing_response.update(new_order);
+#     order_response.testing_response.update(new_order);
     
-    print(order_response.testing_response);
-    jsonString = json.dumps(order_response.testing_response);
-    jsonFile =open("testing_response","w");
-    jsonFile.write(jsonString);
-    jsonFile.close;        
+#     print(order_response.testing_response);
+#     jsonString = json.dumps(order_response.testing_response);
+#     jsonFile =open("testing_response","w");
+#     jsonFile.write(jsonString);
+#     jsonFile.close;        
 
 def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     #BUY LONG == 做多開倉
@@ -197,19 +183,9 @@ async def my_event_helper(event):
     positionSide=matching_positionSide(event.raw_text)
     price=matching_price(event.raw_text)
     price=math.floor(float(price))
-    quantity=getTheQuantity(ratio=0.05,price=price)
-    quantity=0.05
+    quantity=await getTheQuantity(ratio=0.05,price=price)
     
-    Binance_createNewOrder(symbol=symbol,side=side,positionSide=positionSide,price=price,quantity=quantity)
-    if(positionSide.__eq__("Long")):
-        positionSide=1
-    elif(positionSide.__eq__("Short")):
-        positionSide=2
-    if(side.__eq__("BUY")):
-        side="Buy"
-    elif(side.__eq__("SELL")):
-        side="Sell"
-
+    print(quantity)
     
     #bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
 

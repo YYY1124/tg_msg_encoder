@@ -1,0 +1,7 @@
+#mock future trade
+mock_future_API_key = "7eeb3e6eeb993d3db5cbd2d38aa0f98ca7774428acba97511e500a98a822b7cf"
+mock_future_API_secret= "faf116214c3a8b3546d20b4dfe6cc89c874fe335005e9f522a4ec0ccaa0d1b0a"
+
+#mock spot test API
+mock_spot_api_key = "VGaG2lVdcB4KY8WXVpcCyJXiZZZ7o1RN2vNtytxHM90mTuwdUNrzL0jPqBa48Fgv"
+mock_spot_api_secret = "qXYBd5XZ0qUGnhgRRNMM0D9WYkD8Gh6oE4YdRD8OjPQPOhGK6OeK1l0cClaG1uv5"

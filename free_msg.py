@@ -7,29 +7,55 @@ import init
 from binance.client import  Client
 from binance.enums import *
 import json
+import sys
+import logging
+from threading import Timer
 
 from pybit import usdt_perpetual
 
 api_id = 25717021
 api_hash = "cba79f026856da860d65b354a75d50da"
-client = TelegramClient('anon', api_id, api_hash)
+client = TelegramClient('macTesting', api_id, api_hash)
 client.start()
+def program_continuity_checker():
+    print ("one hour pass away")
+    bybit_API_logger.info("one hour pass away")
+    Timer(3600, program_continuity_checker) .start()
+   
+continuity_timer = Timer(3600, program_continuity_checker).start() 
+
+print("the program is receiving message ")
+
 kosirBitcoin = -1001681322568
 DQ_channel = -1001347867469
 testing1 =-835623858
 testing2 =-873060948
 
-mock_future_api_key = init.mock_future_API_key
-mock_future_api_secret = init.mock_future_API_secret
+# mock_future_api_key = init.mock_future_API_key
+# mock_future_api_secret = init.mock_future_API_secret
+# binance_client =  Client(init.mock_future_API_key, init.mock_future_API_secret, testnet=True)
 
+original_output=sys.stdout
+bybit_API_logger=logging.getLogger(__name__)
 
-binance_client =  Client(init.mock_future_API_key, init.mock_future_API_secret, testnet=True)
+file_handler=logging.FileHandler("free_decoder_operation.log")
+log_formatter =logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
+file_handler.setFormatter(log_formatter)
+stream_handler = logging.StreamHandler()
+
+bybit_API_logger.setLevel(logging.INFO)
+bybit_API_logger.addHandler(file_handler)
+bybit_API_logger.addHandler(stream_handler)
+
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
     api_key="CkSkPAoGdHeo6GscAE",
     api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
 )
+
+
+
 
 
 def matching_side(message):
@@ -161,6 +187,7 @@ def bybit_createNewOrder(symbol,side,qty,price,positionSide):
 
     #1-LONG side of both side mode
     #2-SHORT side of both side mode SHORT
+    bybit_API_logger.info('symbol:{} action: {} {} price: {} qty: {}'.format(symbol,side,positionSide,price,qty))
     order=bybit_session.place_active_order(
         symbol=symbol,
         side=side,
@@ -172,23 +199,26 @@ def bybit_createNewOrder(symbol,side,qty,price,positionSide):
         close_on_trigger=False,
         position_idx=positionSide
     )
-    print(order)
+    
+    bybit_API_logger.info(order)
+    
 
 
 @client.on(events.NewMessage(chats=testing1,incoming=True))
 async def my_event_helper(event):
-    print(event.raw_text)
+    
+    logging.info(event.raw_text) #logging in to log
     symbol=matching_coin(event.raw_text)
     side=matching_side(event.raw_text)
     positionSide=matching_positionSide(event.raw_text)
     price=matching_price(event.raw_text)
     price=math.floor(float(price))
-    quantity=await getTheQuantity(ratio=0.05,price=price)
-    
-    print(quantity)
-    
-    #bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
+    quantity=round(await getTheQuantity(ratio=0.05,price=price),2)
+    try:
+        bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
+    except:
+        bybit_API_logger.debug(Exception)
 
-
+ 
 with client:
     client.run_until_disconnected()

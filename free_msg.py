@@ -31,10 +31,6 @@ DQ_channel = -1001347867469
 testing1 =-835623858
 testing2 =-873060948
 
-# mock_future_api_key = init.mock_future_API_key
-# mock_future_api_secret = init.mock_future_API_secret
-# binance_client =  Client(init.mock_future_API_key, init.mock_future_API_secret, testnet=True)
-
 original_output=sys.stdout
 bybit_API_logger=logging.getLogger(__name__)
 
@@ -47,16 +43,14 @@ bybit_API_logger.setLevel(logging.INFO)
 bybit_API_logger.addHandler(file_handler)
 bybit_API_logger.addHandler(stream_handler)
 
+free_strategy_current_order_id="free_strategy_current_order_id.txt"
+
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
     api_key="CkSkPAoGdHeo6GscAE",
     api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
 )
-
-
-
-
 
 def matching_side(message):
     strategy_1_long_open = re.search("做多開倉", message)
@@ -139,47 +133,16 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-# def binance_getTheUSDTAmount():
-#     acc =   binance_client.futures_account_balance();
-#     USDT_balance=acc[3]['balance']#hard code to get the USDT balance
-#     return USDT_balance
+
 
 async def bybit_getTheUSDTAmount():
     acc =  bybit_session.get_wallet_balance(coin="USDT")
     USDT_balance=acc["result"]["USDT"]["available_balance"]#hard code to get the USDT balance
     return USDT_balance
 
-# def Binance_createNewOrder(symbol,side,positionSide,price,quantity):
-#     #BUY LONG == 做多開倉
-#     #SELL SHORT ＝＝做空開倉
+     
 
-#     # new_order=binance_client.futures_create_order(
-#     #     symbol= 'BTCUSDT', #Type of coin e.g.:"BTCUSDT"
-#     #     side=SIDE_SELL ,   #BUY OR Sell
-#     #     positionSide= "short", #Long or Short  
-#     #     type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
-#     #     quantity=1, # the order amount
-#     #     price=18000, # order price ,
-#     #     timeInForce = TIME_IN_FORCE_GTC,)
-
-#     new_order=binance_client.futures_create_order(
-#         symbol= symbol, #Type of coin e.g.:"BTCUSDT"
-#         side=side ,   #BUY OR Sell
-#         positionSide= positionSide, #Long or Short  
-#         type= FUTURE_ORDER_TYPE_LIMIT,  #the type of order e.g.LIMIT/ MARKET
-#         quantity=quantity, # the order amount
-#         price=price, # order price ,
-#         timeInForce = TIME_IN_FORCE_GTC,)
-        
-#     order_response.testing_response.update(new_order);
-    
-#     print(order_response.testing_response);
-#     jsonString = json.dumps(order_response.testing_response);
-#     jsonFile =open("testing_response","w");
-#     jsonFile.write(jsonString);
-#     jsonFile.close;        
-
-def bybit_createNewOrder(symbol,side,qty,price,positionSide):
+async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     #BUY LONG == 做多開倉
     #SELL SHORT ＝＝做空開倉
     #Sell Long == 做多平倉
@@ -187,22 +150,70 @@ def bybit_createNewOrder(symbol,side,qty,price,positionSide):
 
     #1-LONG side of both side mode
     #2-SHORT side of both side mode SHORT
-    bybit_API_logger.info('symbol:{} action: {} {} price: {} qty: {}'.format(symbol,side,positionSide,price,qty))
-    order=bybit_session.place_active_order(
-        symbol=symbol,
-        side=side,
-        qty=qty,
-        price=price,
-        order_type="Limit",
-        time_in_force="GoodTillCancel",
-        reduce_Only=False,
-        close_on_trigger=False,
-        position_idx=positionSide
-    )
+    if(side=="Sell" and positionSide==1): #checking whether it is closing action, This is 做多平倉
+        previous_action_order_id =await current_order_id_handler()
+        try:
+            response=await bybit_closingThePosition(position_order_id=previous_action_order_id,symbol=symbol,side=side,positionSide=positionSide)
+            bybit_API_logger.info(response)       
+        except:
+            bybit_API_logger.exception(Exception) #logging the order exception
+    elif(side=="Buy" and positionSide==2):#checking whether it is closing action, This is 做空平倉
+        previous_action_order_id=await current_order_id_handler()
+        try:
+            response=await bybit_closingThePosition(position_order_id=previous_action_order_id,symbol=symbol,side=side,positionSide=positionSide)
+            bybit_API_logger.info(response)
+        except:
+            bybit_API_logger.exception(Exception) #logging the order exception
+            
+    else:
+        try:
+            bybit_API_logger.info('symbol:{} action: {} {} price: {} qty: {}'.format(symbol,side,positionSide,price,qty))
+            order=bybit_session.place_active_order(
+                symbol=symbol,
+                side=side,
+                qty=qty,
+                price=price,
+                order_type="Limit",
+                time_in_force="GoodTillCancel",
+                reduce_Only=False,
+                close_on_trigger=False,
+                position_idx=positionSide
+            )
+            bybit_API_logger.info(order)
+            bybit_savingTheCurrentOrderId(order["result"]["order_id"],free_strategy_current_order_id)
+            return order
+        except:
+            bybit_API_logger.exception(Exception) #logging the order exception
     
-    bybit_API_logger.info(order)
-    
+async def bybit_closingThePosition(position_order_id,symbol,side,positionSide):
+    current_order=bybit_session.get_active_order(symbol=symbol,order_id=position_order_id)
+    if(current_order["result"]["data"][0]["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
+        response=bybit_session.cancel_active_order(symbol=symbol,order_id=position_order_id)
+        return response
+    elif(current_order["result"]["data"][0]["order_status"]=="Filled"): #if the order have been filled, close the position
+        existing_qty=current_order["result"]["data"][0]["qty"]
+        order=bybit_session.place_active_order(
+            symbol=symbol,
+            side=side,
+            qty=existing_qty,
+            order_type="Market",
+            time_in_force="GoodTillCancel",
+            position_idx=positionSide,
+            reduce_Only=True,
+            close_on_trigger=True)
+        return order
+    else:
+        bybit_API_logger.exception("Wrong Order Status")
 
+def bybit_savingTheCurrentOrderId(order_id,filename):
+    f=open(filename,"w")
+    f.write(str(order_id))
+    f.close
+
+async def current_order_id_handler():
+    f=open("free_strategy_current_order_id.txt","r")
+    previous_action_order_id=f.read()
+    return previous_action_order_id
 
 @client.on(events.NewMessage(chats=testing1,incoming=True))
 async def my_event_helper(event):
@@ -214,10 +225,9 @@ async def my_event_helper(event):
     price=matching_price(event.raw_text)
     price=math.floor(float(price))
     quantity=round(await getTheQuantity(ratio=0.05,price=price),2)
-    try:
-        bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
-    except:
-        bybit_API_logger.debug(Exception)
+    
+    order= await bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
+        
 
  
 with client:

@@ -24,8 +24,22 @@ def program_continuity_checker():
    
 continuity_timer = Timer(3600, program_continuity_checker).start() 
 
+bybit_session = usdt_perpetual.HTTP(
+    endpoint='https://api-testnet.bybit.com', 
+    api_key="CkSkPAoGdHeo6GscAE",
+    api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
+)
+
 print("the program is receiving message ")
 
+
+
+BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+
+# print("BTC existing order:"+str(BTC_last_order))
+
+# print("ETH existing order:"+str(ETH_last_order))
 kosirBitcoin = -1001681322568
 DQ_channel = -1001347867469
 testing1 =-835623858
@@ -46,11 +60,7 @@ bybit_API_logger.addHandler(stream_handler)
 free_strategy_current_order_id="free_strategy_current_order_id.txt"
 
 
-bybit_session = usdt_perpetual.HTTP(
-    endpoint='https://api-testnet.bybit.com', 
-    api_key="CkSkPAoGdHeo6GscAE",
-    api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
-)
+
 
 def matching_side(message):
     strategy_1_long_open = re.search("做多開倉", message)
@@ -133,6 +143,13 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
+def updateTheLastOrder(symbol):
+    global BTC_last_order
+    global ETH_last_order
+    if(symbol=="BTCUSDT"):
+        BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+    if(symbol=="ETHUSDT"):
+        ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
 
 
 async def bybit_getTheUSDTAmount():
@@ -151,21 +168,22 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     #1-LONG side of both side mode
     #2-SHORT side of both side mode SHORT
     if(side=="Sell" and positionSide==1): #checking whether it is closing action, This is 做多平倉
-        previous_action_order_id =await current_order_id_handler()
         try:
-            response=await bybit_closingThePosition(position_order_id=previous_action_order_id,symbol=symbol,side=side,positionSide=positionSide)
-            bybit_API_logger.info(response)       
+            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
+            bybit_API_logger.info(response)
+            updateTheLastOrder(symbol=symbol)       
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
     elif(side=="Buy" and positionSide==2):#checking whether it is closing action, This is 做空平倉
-        previous_action_order_id=await current_order_id_handler()
+        
         try:
-            response=await bybit_closingThePosition(position_order_id=previous_action_order_id,symbol=symbol,side=side,positionSide=positionSide)
+            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
             bybit_API_logger.info(response)
+            updateTheLastOrder(symbol=symbol)
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
             
-    else:
+    else:                              #If it is a opening signal, the below will try to open the position.
         try:
             bybit_API_logger.info('symbol:{} action: {} {} price: {} qty: {}'.format(symbol,side,positionSide,price,qty))
             order=bybit_session.place_active_order(
@@ -180,40 +198,37 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
                 position_idx=positionSide
             )
             bybit_API_logger.info(order)
-            bybit_savingTheCurrentOrderId(order["result"]["order_id"],free_strategy_current_order_id)
+            updateTheLastOrder(symbol=symbol)
             return order
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
     
-async def bybit_closingThePosition(position_order_id,symbol,side,positionSide):
-    current_order=bybit_session.get_active_order(symbol=symbol,order_id=position_order_id)
-    if(current_order["result"]["data"][0]["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
-        response=bybit_session.cancel_active_order(symbol=symbol,order_id=position_order_id)
+async def bybit_closingThePosition(symbol,side,positionSide):
+    if(symbol=="BTCUSDT"):
+            current_order=BTC_last_order
+    if(symbol=="ETHUSDT"):
+            current_order=ETH_last_order
+        
+    if(current_order["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
+        response=bybit_session.cancel_active_order(symbol=symbol,order_id=current_order["order_id"])
         return response
-    elif(current_order["result"]["data"][0]["order_status"]=="Filled"): #if the order have been filled, close the position
-        existing_qty=current_order["result"]["data"][0]["qty"]
+    elif(current_order["order_status"]=="Filled"): #if the order have been filled, close the position
+        existing_qty=current_order["qty"]
         order=bybit_session.place_active_order(
             symbol=symbol,
             side=side,
             qty=existing_qty,
-            order_type="Market",
+            order_type="Market",    #Using the Market type , and observating if there are any bugs
             time_in_force="GoodTillCancel",
             position_idx=positionSide,
             reduce_Only=True,
             close_on_trigger=True)
+        updateTheLastOrder(symbol=symbol)
         return order
     else:
         bybit_API_logger.exception("Wrong Order Status")
 
-def bybit_savingTheCurrentOrderId(order_id,filename):
-    f=open(filename,"w")
-    f.write(str(order_id))
-    f.close
 
-async def current_order_id_handler():
-    f=open("free_strategy_current_order_id.txt","r")
-    previous_action_order_id=f.read()
-    return previous_action_order_id
 
 @client.on(events.NewMessage(chats=testing1,incoming=True))
 async def my_event_helper(event):

@@ -173,7 +173,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
         try:
             response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
             bybit_API_logger.info(response)
-            updateTheLastOrder(symbol=symbol)       
+              
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
     elif(side=="Buy" and positionSide==2):#checking whether it is closing action, This is 做空平倉
@@ -181,7 +181,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
         try:
             response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
             bybit_API_logger.info(response)
-            updateTheLastOrder(symbol=symbol)
+            
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
             

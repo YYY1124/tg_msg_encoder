@@ -33,7 +33,7 @@ bybit_session = usdt_perpetual.HTTP(
 print("the program is receiving message ")
 
 
-
+#when the new position is created, this variable will update
 BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
 ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
 
@@ -143,13 +143,15 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-def updateTheLastOrder(symbol):
-    global BTC_last_order
-    global ETH_last_order
+def updateTheLastOrder(symbol,order):
+    
+    
     if(symbol=="BTCUSDT"):
-        BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+        global BTC_last_order
+        BTC_last_order=order["result"]
     if(symbol=="ETHUSDT"):
-        ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+        global ETH_last_order
+        ETH_last_order=order["result"]
 
 
 async def bybit_getTheUSDTAmount():
@@ -198,7 +200,8 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
                 position_idx=positionSide
             )
             bybit_API_logger.info(order)
-            updateTheLastOrder(symbol=symbol)
+            updateTheLastOrder(symbol=symbol,order=order)
+            print(ETH_last_order)
             return order
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
@@ -206,7 +209,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
 async def bybit_closingThePosition(symbol,side,positionSide):
     if(symbol=="BTCUSDT"):
             current_order=BTC_last_order
-    if(symbol=="ETHUSDT"):
+    elif(symbol=="ETHUSDT"):
             current_order=ETH_last_order
         
     if(current_order["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
@@ -223,7 +226,7 @@ async def bybit_closingThePosition(symbol,side,positionSide):
             position_idx=positionSide,
             reduce_Only=True,
             close_on_trigger=True)
-        updateTheLastOrder(symbol=symbol)
+        updateTheLastOrder(symbol=symbol,order=order)
         return order
     else:
         bybit_API_logger.exception("Wrong Order Status")

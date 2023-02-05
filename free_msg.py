@@ -15,7 +15,7 @@ from pybit import usdt_perpetual
 
 api_id = 25717021
 api_hash = "cba79f026856da860d65b354a75d50da"
-client = TelegramClient('macTesting', api_id, api_hash)
+client = TelegramClient('googleCloudServer', api_id, api_hash)
 client.start()
 def program_continuity_checker():
     print ("one hour pass away")
@@ -215,7 +215,7 @@ async def bybit_closingThePosition(symbol,side,positionSide):
     if(current_order["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
         response=bybit_session.cancel_active_order(symbol=symbol,order_id=current_order["order_id"])
         return response
-    elif(current_order["order_status"]=="Filled"): #if the order have been filled, close the position
+    elif(current_order["order_status"]=="Created" or current_order["order_status"]=="Filled"): #if the order have been Created(啱啱開), close the position
         existing_qty=current_order["qty"]
         order=bybit_session.place_active_order(
             symbol=symbol,
@@ -233,7 +233,7 @@ async def bybit_closingThePosition(symbol,side,positionSide):
 
 
 
-@client.on(events.NewMessage(chats=testing1,incoming=True))
+@client.on(events.NewMessage(chats=kosirBitcoin,incoming=True))
 async def my_event_helper(event):
     
     logging.info(event.raw_text) #logging in to log

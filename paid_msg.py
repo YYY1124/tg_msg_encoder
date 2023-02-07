@@ -1,72 +1,67 @@
-from telethon.sync import TelegramClient, events
-import re
-
-from telethon.tl.types import *
-import math
-import init
-from binance.client import  Client
-from binance.enums import *
-import json
-import sys
-import logging
-from threading import Timer
-
 from pybit import usdt_perpetual
+from telethon.sync import TelegramClient, events
+import re,math,sys,logging
+from telethon.tl.types import *
+from threading import Timer
+import init
 
-api_id = 25717021
-api_hash = "cba79f026856da860d65b354a75d50da"
-client = TelegramClient('macTesting', api_id, api_hash)
-client.start()
+api=init
+client = TelegramClient('macTesting', api.telegram_api_id,api.telegram_api_hash )
+#client.start()
+
 def program_continuity_checker():
     print ("one hour pass away")
     bybit_API_logger.info("one hour pass away")
     Timer(3600, program_continuity_checker) .start()
    
-continuity_timer = Timer(3600, program_continuity_checker).start() 
+#continuity_timer = Timer(3600, program_continuity_checker).start() 
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
-    api_key="CkSkPAoGdHeo6GscAE",
-    api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
+    api_key=api.bybit_testnet_future_api_key,
+    api_secret=api.bybit_testnet_future_api_secret
 )
 
 print("the program is receiving message ")
 
-
-#when the new position is created, this variable will update
-BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
-ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
-
-# print("BTC existing order:"+str(BTC_last_order))
-
-# print("ETH existing order:"+str(ETH_last_order))
 kosirBitcoin = -1001681322568
 DQ_channel = -1001347867469
 testing1 =-835623858
 testing2 =-873060948
 
-original_output=sys.stdout
 bybit_API_logger=logging.getLogger(__name__)
 
-file_handler=logging.FileHandler("free_decoder_operation.log")
+file_handler=logging.FileHandler("paid_decoder_operation.log")
 log_formatter =logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
 file_handler.setFormatter(log_formatter)
 stream_handler = logging.StreamHandler()
-
 bybit_API_logger.setLevel(logging.INFO)
 bybit_API_logger.addHandler(file_handler)
 bybit_API_logger.addHandler(stream_handler)
 
-free_strategy_current_order_id="free_strategy_current_order_id.txt"
+strategy_list={"free":{"BTCUSDT":{},"ETHUSDT":{}},
+          "strategy1":{"BTCUSDT":{},"ETHUSDT":{}},
+          "strategy2":{"BTCUSDT":{},"ETHUSDT":{}},
+          "strategy_devin":{"BTCUSDT":{},"ETHUSDT":{}}}
 
-
-
+def matching_strategy(message):
+    
+    result=re.findall(r"「.*」",message)[0] 
+    
+    if(result == "「1號策略」"):
+        return 1
+    elif(result == "「2號策略」"):
+        return 2
+    elif(result == "「Devin策略」"):
+        return 3
+    else:
+        bybit_API_logger.info("can not find the correct strategy, ignore this message")
 
 def matching_side(message):
-    strategy_1_long_open = re.search("做多開倉", message)
-    strategy_1_long_close = re.search("做多全部平倉", message)
-    strategy_1_short_open = re.search("做空開倉", message)
-    strategy_1_short_close = re.search("做空全部平倉", message)
+    strategy_1_long_open = re.search(r"做多開倉", message)
+    strategy_1_long_close = re.search(r"做多全部平倉|做多平倉\d\d%", message)
+    strategy_1_short_open = re.search(r"做空開倉", message)
+    strategy_1_short_close = re.search(r"做空全部平倉|做空平倉\d\d%", message)
     side=""
 
 #"《做多開倉》"
@@ -92,6 +87,7 @@ def matching_side(message):
         
         
         return (side);
+    
 
 def matching_positionSide(message):
     strategy_1_long_open = re.search("做多開倉", message)
@@ -130,7 +126,7 @@ def matching_price(message):
     price= message.split('at',1)
     return(price[1]);
 
-def matching_symbol(message):  # defining it is BTC or ETH
+def matching_coin(message):  # defining it is BTC or ETH
     strategy_coin = re.search("btc/USDT", message)  # 只有ETH 或者BTC
     if (strategy_coin != None):
         return ("BTCUSDT")
@@ -143,15 +139,18 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-def updateTheLastOrder(symbol,order):
+def updateTheLastOrder(strategy,symbol,order):
     
-    
-    if(symbol=="BTCUSDT"):
-        global BTC_last_order
-        BTC_last_order=order["result"]
-    elif(symbol=="ETHUSDT"):
-        global ETH_last_order
-        ETH_last_order=order["result"]
+    if(strategy==1):
+        global strategy_list
+        strategy_list["strategy1"][symbol]=order["result"]
+
+    elif(strategy==2):
+        
+        strategy_list["strategy2"][symbol]=order["result"]
+    elif(strategy==3):
+        
+        strategy_list["strategy3"][symbol]=order["result"]
 
 
 async def bybit_getTheUSDTAmount():
@@ -231,25 +230,12 @@ async def bybit_closingThePosition(symbol,side,positionSide):
     else:
         bybit_API_logger.exception("Wrong Order Status")
 
-
-
-@client.on(events.NewMessage(chats=testing1,incoming=True))
-async def my_event_helper(event):
     
-    logging.info(event.raw_text) #logging in to log
-    symbol=matching_symbol(event.raw_text)
-    side=matching_side(event.raw_text)
-    positionSide=matching_positionSide(event.raw_text)
-    price=matching_price(event.raw_text)
-    price=math.floor(float(price))
-    quantity=round(await getTheQuantity(ratio=0.05,price=price),2)
-    
-    order= await bybit_createNewOrder(symbol=symbol,side=side,qty=quantity,price=price,positionSide=positionSide)
-        
 
-        
+def main():
+    message="btc/USDT 「2號策略」《做空平倉60%》@ 22963.09"
+    result= matching_side(message)
+    print(result)
 
-
- 
-with client:
-    client.run_until_disconnected()
+if __name__==main():
+    main()

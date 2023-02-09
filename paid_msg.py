@@ -1,6 +1,6 @@
 from pybit import usdt_perpetual
 from telethon.sync import TelegramClient, events
-import re,math,sys,logging
+import re,math,sys,logging,json
 from telethon.tl.types import *
 from threading import Timer
 import init
@@ -18,11 +18,11 @@ def program_continuity_checker():
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
-    api_key=api.bybit_testnet_future_api_key,
-    api_secret=api.bybit_testnet_future_api_secret
+    api_key=api.bybit_acc2_testnet_future_api_key,
+    api_secret=api.bybit_acc2_testnet_future_api_secret
 )
 
-print("the program is receiving message ")
+
 
 kosirBitcoin = -1001681322568
 DQ_channel = -1001347867469
@@ -39,10 +39,47 @@ bybit_API_logger.setLevel(logging.INFO)
 bybit_API_logger.addHandler(file_handler)
 bybit_API_logger.addHandler(stream_handler)
 
-strategy_list={"free":{"BTCUSDT":{},"ETHUSDT":{}},
+# strategy_list={"free":{"BTCUSDT":{},"ETHUSDT":{}},
+#           "strategy1":{"BTCUSDT":{},"ETHUSDT":{}},
+#           "strategy2":{"BTCUSDT":{},"ETHUSDT":{}},
+#           "strategy_devin":{"BTCUSDT":{},"ETHUSDT":{}}}
+
+
+
+class strategy:
+    strategy_list={"free":{"BTCUSDT":{},"ETHUSDT":{}},
           "strategy1":{"BTCUSDT":{},"ETHUSDT":{}},
           "strategy2":{"BTCUSDT":{},"ETHUSDT":{}},
           "strategy_devin":{"BTCUSDT":{},"ETHUSDT":{}}}
+    def strategy_getter(stra,symbol):
+        if(stra==1):
+            return strategy.strategy_list["strategy1"][symbol]
+        elif(stra==2):
+            return strategy.strategy_list["strategy2"][symbol]
+        elif(stra==3):
+            return strategy.strategy_list["strategy_devin"][symbol]
+        else:
+            bybit_API_logger.exception("wrong strategy number")
+    
+    def strategy_setter(stra,symbol,order):
+        if(stra==1):
+            strategy.strategy_list["strategy1"][symbol]=order
+        elif(stra==2):
+            strategy.strategy_list["strategy2"][symbol]=order
+        elif(stra==3):
+            strategy.strategy_list["strategy_devin"][symbol]=order
+        else:
+            bybit_API_logger.exception("wrong strategy number")
+        print(strategy.strategy_list)
+        jsonString=json.dumps(strategy.strategy_list)
+        jsonFile=open("existing_order.json","w")
+        jsonFile.write(jsonString)
+        jsonFile.close
+
+print("the program is receiving message ") ##############################
+jsonFile=open("existing_order.json","r")
+strategy.strategy_list=json.load(jsonFile) #get the existing order when the program start.
+print(strategy.strategy_list)
 
 def matching_strategy(message):
     
@@ -88,12 +125,17 @@ def matching_side(message):
         
         return (side);
     
+def side_inverter(side): #work for stop loss function
+    if(side=="Sell"):
+        return "Buy"
+    elif(side=="Buy"):
+        return "Sell"
 
 def matching_positionSide(message):
-    strategy_1_long_open = re.search("做多開倉", message)
-    strategy_1_long_close = re.search("做多全部平倉", message)
-    strategy_1_short_open = re.search("做空開倉", message)
-    strategy_1_short_close = re.search("做空全部平倉", message)
+    strategy_1_long_open = re.search(r"做多開倉", message)
+    strategy_1_long_close = re.search(r"做多全部平倉|做多平倉\d\d%", message)
+    strategy_1_short_open = re.search(r"做空開倉", message)
+    strategy_1_short_close = re.search(r"做空全部平倉|做空平倉\d\d%", message)
     positionSide=""
     
 
@@ -122,16 +164,36 @@ def matching_positionSide(message):
         
         return (positionSide);
 
-def matching_price(message):
-    price= message.split('at',1)
-    return(price[1]);
-
-def matching_coin(message):  # defining it is BTC or ETH
+def matching_symbol(message):  # defining it is BTC or ETH
     strategy_coin = re.search("btc/USDT", message)  # 只有ETH 或者BTC
     if (strategy_coin != None):
         return ("BTCUSDT")
     else:
         return ("ETHUSDT")
+
+def matching_changingStopLoss(message): #To protect profit, changing the stop loss
+    result=re.findall(r"提高止蝕價",message).__len__()
+    
+    if(result==0):
+        return False
+    elif(result>0):
+        return True
+
+def matching_price(message):
+    changingStopLoss=matching_changingStopLoss(message)
+    if(changingStopLoss==False):
+        price= message.split('@',1)
+        return(price[1]);
+    elif(changingStopLoss==True):
+        result=re.findall(r"@.*\uFF0C此",message)[0]
+        result=result.split('@',1)
+        result=result[1]
+        result=result.split('\uFF0C',1)
+        result=result[0]
+        print("-----")
+        print(result)
+        return result
+
 
 async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     balance=await bybit_getTheUSDTAmount()
@@ -139,18 +201,7 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-def updateTheLastOrder(strategy,symbol,order):
-    
-    if(strategy==1):
-        global strategy_list
-        strategy_list["strategy1"][symbol]=order["result"]
 
-    elif(strategy==2):
-        
-        strategy_list["strategy2"][symbol]=order["result"]
-    elif(strategy==3):
-        
-        strategy_list["strategy3"][symbol]=order["result"]
 
 
 async def bybit_getTheUSDTAmount():
@@ -160,7 +211,15 @@ async def bybit_getTheUSDTAmount():
 
      
 
-async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
+async def bybit_createNewOrder(message):
+    symbol=matching_symbol(message)
+    side=matching_side(message)
+    positionSide=matching_positionSide(message)
+    price=matching_price(message)
+    price=round(float(price),2)
+    qty=round(await getTheQuantity(ratio=0.05,price=price),2)
+    stra=matching_strategy(message)
+
     #BUY LONG == 做多開倉
     #SELL SHORT ＝＝做空開倉
     #Sell Long == 做多平倉
@@ -170,7 +229,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     #2-SHORT side of both side mode SHORT
     if(side=="Sell" and positionSide==1): #checking whether it is closing action, This is 做多平倉
         try:
-            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
+            response=await bybit_closingThePosition(stra=stra,symbol=symbol,side=side,positionSide=positionSide,message=message)
             bybit_API_logger.info(response)
               
         except:
@@ -178,7 +237,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     elif(side=="Buy" and positionSide==2):#checking whether it is closing action, This is 做空平倉
         
         try:
-            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
+            response=await bybit_closingThePosition(stra=stra,symbol=symbol,side=side,positionSide=positionSide,message=message)
             bybit_API_logger.info(response)
             
         except:
@@ -196,46 +255,92 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
                 time_in_force="GoodTillCancel",
                 reduce_Only=False,
                 close_on_trigger=False,
-                position_idx=positionSide
+                position_idx=positionSide,
+                
             )
             bybit_API_logger.info(order)
-            updateTheLastOrder(symbol=symbol,order=order)
-            print(ETH_last_order)
+            strategy.strategy_setter(stra=stra,symbol=symbol,order=order)
             return order
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
+
+async def bybit_unfilledOrderChecker(symbol,stra): #return ture, if the current order is unfilled
+    current_order=strategy.strategy_getter(stra=stra,symbol=symbol)["result"]
+    the_unfilled_order=bybit_session.get_active_order(symbol=symbol,order_status="New")["result"]["data"]
+    cancelling=False
+    if(len(the_unfilled_order)>0): #check is any unfilled order exist, if yes,
+        for order in the_unfilled_order:
+            if(order["order_id"]==current_order["order_id"]):  #Checking whether the order have been filled, if not, just cancelled the order.
+                cancelling=True
+    return cancelling 
+
+async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
+    current_order=strategy.strategy_getter(stra=stra,symbol=symbol)["result"]
+    cancelling=await bybit_unfilledOrderChecker(symbol=symbol,stra=stra) 
     
-async def bybit_closingThePosition(symbol,side,positionSide):
-    if(symbol=="BTCUSDT"):
-            current_order=BTC_last_order
-    elif(symbol=="ETHUSDT"):
-            current_order=ETH_last_order
-        
-    if(current_order["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
+    if(cancelling==True): #The current order is unfilled, cancelled the order.
         response=bybit_session.cancel_active_order(symbol=symbol,order_id=current_order["order_id"])
+        strategy.strategy_setter(stra=stra,symbol=symbol,order={}) #when the order have been cancelled, empty the order
         return response
-    elif(current_order["order_status"]=="Created" or current_order["order_status"]=="Filled"): #if the order have been Created(啱啱開), close the position
+    elif(cancelling==False):  #If the unfilled order list doesnt have the current order, assume it was filled
         existing_qty=current_order["qty"]
-        order=bybit_session.place_active_order(
-            symbol=symbol,
-            side=side,
-            qty=existing_qty,
-            order_type="Market",    #Using the Market type , and observating if there are any bugs
-            time_in_force="GoodTillCancel",
-            position_idx=positionSide,
-            reduce_Only=True,
-            close_on_trigger=True)
-        updateTheLastOrder(symbol=symbol,order=order)
-        return order
-    else:
-        bybit_API_logger.exception("Wrong Order Status")
+        changingStopLoss=matching_changingStopLoss(message)
+        if(changingStopLoss==False): #Close all 100% position
+            order=bybit_session.place_active_order(
+                        symbol=symbol,
+                        side=side,
+                        qty=existing_qty,
+                        order_type="Market",    #Using the Market type , and observating if there are any bugs
+                        time_in_force="GoodTillCancel",
+                        position_idx=positionSide,
+                        reduce_Only=True,
+                        close_on_trigger=True)
+            strategy.strategy_setter(stra=stra,symbol=symbol,order={})#when the position have been closed, empty the order
+            return order
+        elif(changingStopLoss==True): ######################fixed the closing size is 60% manually
+            remainder=round(existing_qty-round(existing_qty*0.6,2),2)
+            existing_qty=round(existing_qty*0.6,2)
+            #bybit_session.full_partial_position_tp_sl_switch(symbol=symbol,tp_sl_mode="Partial")
+            bybit_session.set_trading_stop(
+                        symbol=symbol,
+                        side=side_inverter(side),
+                        positionSide=positionSide,
+                        stop_loss=current_order["price"],
+                        sl_size=remainder)
+
+            order=bybit_session.place_active_order(
+                        symbol=symbol,
+                        side=side,
+                        qty=existing_qty,
+                        order_type="Market",    #Using the Market type , and observating if there are any bugs
+                        time_in_force="GoodTillCancel",
+                        position_idx=positionSide,
+                        reduce_Only=True,
+                        close_on_trigger=True
+                        )
+            
+            print(order)
+            
+            print("########")
+            
+            order["result"]["qty"]=round(remainder,2) #update the reaminder qty of the order
+            
+            strategy.strategy_setter(stra=stra,symbol=symbol,order=order)
+    
+   
 
     
 
-def main():
-    message="btc/USDT 「2號策略」《做空平倉60%》@ 22963.09"
-    result= matching_side(message)
-    print(result)
+@client.on(events.NewMessage(chats=testing2,incoming=True))
+async def my_event_helper(event):
+    
+    logging.info(event.raw_text) #logging in to log
+    order= await bybit_createNewOrder(message=event.raw_text)
+        
 
-if __name__==main():
-    main()
+        
+
+
+ 
+with client:
+    client.run_until_disconnected()

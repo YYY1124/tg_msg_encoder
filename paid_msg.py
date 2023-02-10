@@ -7,19 +7,19 @@ import init
 
 api=init
 client = TelegramClient('macTesting', api.telegram_api_id,api.telegram_api_hash )
-#client.start()
+client.start()
 
 def program_continuity_checker():
     print ("one hour pass away")
     bybit_API_logger.info("one hour pass away")
     Timer(3600, program_continuity_checker) .start()
    
-#continuity_timer = Timer(3600, program_continuity_checker).start() 
+continuity_timer = Timer(3600, program_continuity_checker).start() 
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
-    api_key=api.bybit_acc2_testnet_future_api_key,
-    api_secret=api.bybit_acc2_testnet_future_api_secret
+    api_key=api.bybit_testnet_future_api_key,
+    api_secret=api.bybit_testnet_future_api_secret
 )
 
 
@@ -47,7 +47,7 @@ bybit_API_logger.addHandler(stream_handler)
 
 
 class strategy:
-    strategy_list={"free":{"BTCUSDT":{},"ETHUSDT":{}},
+    strategy_list={
           "strategy1":{"BTCUSDT":{},"ETHUSDT":{}},
           "strategy2":{"BTCUSDT":{},"ETHUSDT":{}},
           "strategy_devin":{"BTCUSDT":{},"ETHUSDT":{}}}
@@ -58,6 +58,7 @@ class strategy:
             return strategy.strategy_list["strategy2"][symbol]
         elif(stra==3):
             return strategy.strategy_list["strategy_devin"][symbol]
+
         else:
             bybit_API_logger.exception("wrong strategy number")
     
@@ -83,7 +84,7 @@ print(strategy.strategy_list)
 
 def matching_strategy(message):
     
-    result=re.findall(r"「.*」",message)[0] 
+    result=re.findall(r"「.*」",message)
     
     if(result == "「1號策略」"):
         return 1
@@ -93,6 +94,8 @@ def matching_strategy(message):
         return 3
     else:
         bybit_API_logger.info("can not find the correct strategy, ignore this message")
+
+
 
 def matching_side(message):
     strategy_1_long_open = re.search(r"做多開倉", message)
@@ -180,28 +183,31 @@ def matching_changingStopLoss(message): #To protect profit, changing the stop lo
         return True
 
 def matching_price(message):
-    changingStopLoss=matching_changingStopLoss(message)
-    if(changingStopLoss==False):
-        price= message.split('@',1)
+    at=re.findall(r"at",message)[0]
+    if(at=="at"): #This is the message from free channel
+        price= message.split('at',1)
         return(price[1]);
-    elif(changingStopLoss==True):
-        result=re.findall(r"@.*\uFF0C此",message)[0]
-        result=result.split('@',1)
-        result=result[1]
-        result=result.split('\uFF0C',1)
-        result=result[0]
-        print("-----")
-        print(result)
-        return result
+    else: #This is the message from paid channel
+        changingStopLoss=matching_changingStopLoss(message)
+        if(changingStopLoss==False):
+            price= message.split('@',1)
+            return(price[1]);
+        elif(changingStopLoss==True):
+            result=re.findall(r"@.*\uFF0C此",message)[0]
+            result=result.split('@',1)
+            result=result[1]
+            result=result.split('\uFF0C',1)
+            result=result[0]
+            print("-----")
+            print(result)
+            return result
 
 
 async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     balance=await bybit_getTheUSDTAmount()
     #balance=5000
-    leverage=50; #fixed
+    leverage=35; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
-
-
 
 
 async def bybit_getTheUSDTAmount():
@@ -286,6 +292,12 @@ async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
         existing_qty=current_order["qty"]
         changingStopLoss=matching_changingStopLoss(message)
         if(changingStopLoss==False): #Close all 100% position
+            bybit_session.set_trading_stop(
+                        symbol=symbol,
+                        side=side_inverter(side),
+                        positionSide=positionSide,
+                        stop_loss=0,
+                        sl_size=remainder)
             order=bybit_session.place_active_order(
                         symbol=symbol,
                         side=side,
@@ -319,13 +331,9 @@ async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
                         close_on_trigger=True
                         )
             
-            print(order)
-            
-            print("########")
-            
             order["result"]["qty"]=round(remainder,2) #update the reaminder qty of the order
-            
             strategy.strategy_setter(stra=stra,symbol=symbol,order=order)
+            return order
     
    
 
@@ -333,7 +341,6 @@ async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
 
 @client.on(events.NewMessage(chats=testing2,incoming=True))
 async def my_event_helper(event):
-    
     logging.info(event.raw_text) #logging in to log
     order= await bybit_createNewOrder(message=event.raw_text)
         

@@ -12,10 +12,32 @@ import logging
 from threading import Timer
 
 from pybit import usdt_perpetual
+class strategy:
+    free_strategy={"BTCUSDT":{},"ETHUSDT":{}}
 
+    def strategy_getter(symbol):   
+        if(symbol=="BTCUSDT"):
+            return strategy.free_strategy["BTCUSDT"]
+        elif(symbol=="ETHUSDT"):
+            return strategy.free_strategy["ETHUSDT"]
+        else:
+            bybit_API_logger.exception("Wrong Symbol for strategy_getter")
+    def strategy_setter(symbol,order):
+        if(symbol=="BTCUSDT"):
+            strategy.free_strategy["BTCUSDT"]=order
+        elif(symbol=="ETHUSDT"):
+            strategy.free_strategy["ETHUSDT"]=order
+        else:
+            bybit_API_logger.exception("Wrong Symbol for strategy_setter")
+        bybit_API_logger.info(strategy.free_strategy)
+        jsonString=json.dumps(strategy.free_strategy)
+        jsonFile=open("free_existing_order.json","w")
+        jsonFile.write(jsonString)
+        jsonFile.close
 api_id = 25717021
 api_hash = "cba79f026856da860d65b354a75d50da"
-client = TelegramClient('macTesting', api_id, api_hash)
+
+client = TelegramClient('googleCloudServer', api_id, api_hash)
 client.start()
 def program_continuity_checker():
     print ("one hour pass away")
@@ -26,26 +48,30 @@ continuity_timer = Timer(3600, program_continuity_checker).start()
 
 bybit_session = usdt_perpetual.HTTP(
     endpoint='https://api-testnet.bybit.com', 
-    api_key="CkSkPAoGdHeo6GscAE",
-    api_secret="NxJrZDnyELYP1XcsjEsJ9xqJdgPYAKNm28yk"
+    api_key=init.bybit_testnet_future_api_key,
+    api_secret=init.bybit_testnet_future_api_secret
 )
 
 print("the program is receiving message ")
+jsonFile=open("free_existing_order.json","r")
+strategy.free_strategy=json.load(jsonFile) #get the existing order when the program start.
+print(strategy.free_strategy)
 
 
 #when the new position is created, this variable will update
-BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
-ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+# BTC_last_order=bybit_session.get_active_order(symbol="BTCUSDT",order_status="Filled",limit=1)["result"]["data"][0]
+# ETH_last_order=bybit_session.get_active_order(symbol="ETHUSDT",order_status="Filled",limit=1)["result"]["data"][0]
 
-# print("BTC existing order:"+str(BTC_last_order))
 
-# print("ETH existing order:"+str(ETH_last_order))
+
+    
+
 kosirBitcoin = -1001681322568
-DQ_channel = -1001347867469
+
 testing1 =-835623858
 testing2 =-873060948
 
-original_output=sys.stdout
+
 bybit_API_logger=logging.getLogger(__name__)
 
 file_handler=logging.FileHandler("free_decoder_operation.log")
@@ -143,15 +169,15 @@ async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     leverage=50; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
-def updateTheLastOrder(symbol,order):
+# def updateTheLastOrder(symbol,order):
     
     
-    if(symbol=="BTCUSDT"):
-        global BTC_last_order
-        BTC_last_order=order["result"]
-    elif(symbol=="ETHUSDT"):
-        global ETH_last_order
-        ETH_last_order=order["result"]
+#     if(symbol=="BTCUSDT"):
+#         global BTC_last_order
+#         BTC_last_order=order["result"]
+#     elif(symbol=="ETHUSDT"):
+#         global ETH_last_order
+#         ETH_last_order=order["result"]
 
 
 async def bybit_getTheUSDTAmount():
@@ -171,7 +197,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     #2-SHORT side of both side mode SHORT
     if(side=="Sell" and positionSide==1): #checking whether it is closing action, This is 做多平倉
         try:
-            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
+            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide,price=price)
             bybit_API_logger.info(response)
               
         except:
@@ -179,7 +205,7 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
     elif(side=="Buy" and positionSide==2):#checking whether it is closing action, This is 做空平倉
         
         try:
-            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide)
+            response=await bybit_closingThePosition(symbol=symbol,side=side,positionSide=positionSide,price=price)
             bybit_API_logger.info(response)
             
         except:
@@ -200,40 +226,49 @@ async def bybit_createNewOrder(symbol,side,qty,price,positionSide):
                 position_idx=positionSide
             )
             bybit_API_logger.info(order)
-            updateTheLastOrder(symbol=symbol,order=order)
-            print(ETH_last_order)
+            strategy.strategy_setter(symbol=symbol,order=order)
             return order
         except:
             bybit_API_logger.exception(Exception) #logging the order exception
-    
-async def bybit_closingThePosition(symbol,side,positionSide):
-    if(symbol=="BTCUSDT"):
-            current_order=BTC_last_order
-    elif(symbol=="ETHUSDT"):
-            current_order=ETH_last_order
-        
-    if(current_order["order_status"]=="New"): #Checking whether the order have been filled, if not, just cancelled the order.
+
+async def bybit_unfilledOrderChecker(symbol): #return ture, if the current order is unfilled
+    current_order=strategy.strategy_getter(symbol=symbol)["result"]
+    the_unfilled_order=bybit_session.get_active_order(symbol=symbol,order_status="New")["result"]["data"]
+    cancelling=False
+    if(len(the_unfilled_order)>0): #check is any unfilled order exist, if yes,
+        for order in the_unfilled_order:
+            if(order["order_id"]==current_order["order_id"]):  #Checking whether the order have been filled, if not, just cancelled the order.
+                cancelling=True
+    return cancelling 
+
+async def bybit_closingThePosition(symbol,side,positionSide,price):
+    current_order=strategy.strategy_getter(symbol=symbol)["result"]
+    cancelling=await bybit_unfilledOrderChecker(symbol=symbol) 
+
+    if(cancelling==True): #Checking whether the order have been filled, if not, just cancelled the order.
         response=bybit_session.cancel_active_order(symbol=symbol,order_id=current_order["order_id"])
+        strategy.strategy_setter(symbol=symbol,order={})
         return response
-    elif(current_order["order_status"]=="Created" or current_order["order_status"]=="Filled"): #if the order have been Created(啱啱開), close the position
+    elif(cancelling==False): #if the order have been Created(啱啱開), close the position
         existing_qty=current_order["qty"]
         order=bybit_session.place_active_order(
-            symbol=symbol,
-            side=side,
-            qty=existing_qty,
-            order_type="Market",    #Using the Market type , and observating if there are any bugs
-            time_in_force="GoodTillCancel",
-            position_idx=positionSide,
-            reduce_Only=True,
-            close_on_trigger=True)
-        updateTheLastOrder(symbol=symbol,order=order)
+                        symbol=symbol,
+                        side=side,
+                        qty=existing_qty,
+                        price=price,
+                        order_type="Limit",    #Using the Market type , and observating if there are any bugs
+                        time_in_force="GoodTillCancel",
+                        position_idx=positionSide,
+                        reduce_Only=True,
+                        close_on_trigger=True)
+        strategy.strategy_setter(symbol=symbol,order={})#when the position have been closed, empty the order
         return order
     else:
         bybit_API_logger.exception("Wrong Order Status")
 
 
 
-@client.on(events.NewMessage(chats=testing1,incoming=True))
+@client.on(events.NewMessage(chats=kosirBitcoin,incoming=True))
 async def my_event_helper(event):
     
     logging.info(event.raw_text) #logging in to log

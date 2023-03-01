@@ -47,9 +47,9 @@ def program_continuity_checker():
 continuity_timer = Timer(3600, program_continuity_checker).start() 
 
 bybit_session = usdt_perpetual.HTTP(
-    endpoint='https://api-testnet.bybit.com', 
-    api_key=init.bybit_testnet_future_api_key,
-    api_secret=init.bybit_testnet_future_api_secret
+    endpoint='https://api.bybit.com', 
+    api_key=init.bybit_real_acc_future_api_key,
+    api_secret=init.bybit_real_acc_future_api_secret
 )
 
 print("the program is receiving message ")
@@ -261,7 +261,9 @@ async def bybit_closingThePosition(symbol,side,positionSide,price):
                         position_idx=positionSide,
                         reduce_Only=True,
                         close_on_trigger=True)
+        bybit_API_logger.info(order)
         strategy.strategy_setter(symbol=symbol,order={})#when the position have been closed, empty the order
+        
         return order
     else:
         bybit_API_logger.exception("Wrong Order Status")

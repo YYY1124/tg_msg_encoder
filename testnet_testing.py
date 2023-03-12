@@ -6,7 +6,7 @@ from threading import Timer
 import init
 
 api=init
-client = TelegramClient('googleCloudServer2', api.telegram_api_id,api.telegram_api_hash )
+client = TelegramClient('macTesting', api.telegram_api_id,api.telegram_api_hash )
 client.start()
 
 def program_continuity_checker():
@@ -17,9 +17,9 @@ def program_continuity_checker():
 continuity_timer = Timer(3600, program_continuity_checker).start() 
 
 bybit_session = usdt_perpetual.HTTP(
-    endpoint='https://api.bybit.com', 
-    api_key=api.bybit_real_acc_future_api_key,
-    api_secret=api.bybit_real_acc_future_api_secret
+    endpoint='https://api-testnet.bybit.com', 
+    api_key=api.bybit_testnet_future_api_key,
+    api_secret=api.bybit_testnet_future_api_secret
 )
 
 
@@ -33,7 +33,7 @@ tommy = 952653251
 
 bybit_API_logger=logging.getLogger(__name__)
 
-file_handler=logging.FileHandler("paid_decoder_operation.log")
+file_handler=logging.FileHandler("test_decoder_operation.log")
 log_formatter =logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
 file_handler.setFormatter(log_formatter)
 stream_handler = logging.StreamHandler()
@@ -75,13 +75,13 @@ class strategy:
             bybit_API_logger.exception("wrong strategy number, the setter error occur")
         print(strategy.strategy_list)
         jsonString=json.dumps(strategy.strategy_list)
-        jsonFile=open("existing_order.json","w")
+        jsonFile=open("test_existing_order.json","w")
         jsonFile.write(jsonString)
         jsonFile.close
 
 
 print("the program is receiving message ") ##############################
-jsonFile=open("existing_order.json","r")
+jsonFile=open("test_existing_order.json","r")
 strategy.strategy_list=json.load(jsonFile) #get the existing order when the program start.
 print(strategy.strategy_list)
 
@@ -447,10 +447,10 @@ async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
 
     
 
-@client.on(events.NewMessage(chats=kosirBitcoinPaid,incoming=True))
+@client.on(events.NewMessage(chats=testing1,incoming=True))
 async def my_event_helper(event):
     bybit_API_logger.info(event.raw_text) #logging in to log
-    await client.forward_messages(tommy, event.message)
+    #await client.forward_messages(tommy, event.message)
     if(ignoring_noise(event.raw_text)):
         bybit_API_logger.error("noise message, already ignored")
         return None

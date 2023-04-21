@@ -1,12 +1,13 @@
-from pybit import usdt_perpetual
+from pybit.unified_trading import HTTP
 from telethon.sync import TelegramClient, events
 import re,math,sys,logging,json
 from telethon.tl.types import *
 from threading import Timer
 import init
 
+
 api=init
-client = TelegramClient('googleCloudServer2', api.telegram_api_id,api.telegram_api_hash )
+client = TelegramClient('googleCloudServer', api.telegram_api_id,api.telegram_api_hash )
 client.start()
 
 def program_continuity_checker():
@@ -16,10 +17,10 @@ def program_continuity_checker():
    
 continuity_timer = Timer(3600, program_continuity_checker).start() 
 
-bybit_session = usdt_perpetual.HTTP(
-    endpoint='https://api.bybit.com', 
-    api_key=api.bybit_real_acc_future_api_key,
-    api_secret=api.bybit_real_acc_future_api_secret
+bybit_session = HTTP(
+    testnet=True, 
+    api_key=api.bybit_testnet_future_api_key,
+    api_secret=api.bybit_testnet_future_api_secret,
 )
 
 
@@ -274,13 +275,15 @@ async def protectingPosition(message):
 async def getTheQuantity(ratio,price): #ration is the percentage of the balance
     balance=await bybit_getTheUSDTAmount()
     #balance=5000
-    leverage=20; #fixed
+    leverage=15; #fixed
     return (float(balance)*float(ratio)*float(leverage)/float(price));
 
 
 async def bybit_getTheUSDTAmount():
-    acc =  bybit_session.get_wallet_balance(coin="USDT")
-    USDT_balance=acc["result"]["USDT"]["wallet_balance"]#hard code to get the USDT balance
+    acc =  bybit_session.get_wallet_balance(coin="USDT",accountType="CONTRACT")
+    
+    USDT_balance=acc['result']['list'][0]['coin'][0]['walletBalance']#hard code to get the USDT balance
+    
     return USDT_balance
 
      
@@ -292,7 +295,7 @@ async def bybit_createNewOrder(message):
     positionSide=matching_positionSide(message)
     price=matching_price(message)
     price=round(float(price),2)
-    qty=round(await getTheQuantity(ratio=0.07,price=price),matching_roundingDecimal(message))
+    qty=round(await getTheQuantity(ratio=0.04,price=price),matching_roundingDecimal(message))
     stra=matching_strategy(message)
 
     #BUY LONG == 做多開倉
@@ -321,13 +324,14 @@ async def bybit_createNewOrder(message):
     else:                              #If it is a opening signal, the below will try to open the position.
         try:
             bybit_API_logger.info('symbol:{} action: {} {} price: {} qty: {}'.format(symbol,side,positionSide,price,qty))
-            order=bybit_session.place_active_order(
+            order=bybit_session.place_order(
+                category="linear",
                 symbol=symbol,
                 side=side,
                 qty=qty,
                 price=price,
                 order_type="Limit",
-                time_in_force="GoodTillCancel",
+                time_in_force="GTC",
                 reduce_Only=False,
                 close_on_trigger=False,
                 position_idx=positionSide,
@@ -447,10 +451,10 @@ async def bybit_closingThePosition(stra,symbol,side,positionSide,message):
 
     
 
-@client.on(events.NewMessage(chats=kosirBitcoinPaid,incoming=True))
+@client.on(events.NewMessage(chats=testing1,incoming=True))
 async def my_event_helper(event):
     bybit_API_logger.info(event.raw_text) #logging in to log
-    await client.forward_messages(tommy, event.message)
+   
     if(ignoring_noise(event.raw_text)):
         bybit_API_logger.error("noise message, already ignored")
         return None
